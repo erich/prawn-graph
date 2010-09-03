@@ -50,13 +50,20 @@ module Prawn
             " wish this graph to be drawn from."
         end
         opts = { :theme => Prawn::Chart::Themes.monochrome, :width => 500, :height => 200, :spacing => 20 }.merge(options)
+        @raw_options = opts
         (@headings, @values, @highest_value) = process_the data
+        @lowest_value = options[:minimum_value] ? options[:minimum_value] : 0
+        @highest_value = options[:maximum_value] if options[:maximum_value]
+        @value_transform = options[:transform] if Proc === options[:transform]
+        @downwards = options[:downward] || options[:downwards] || false
         (grid_x_start, grid_y_start, grid_width, grid_height) = parse_sizing_from opts 
         @colour = (!opts[:use_color].nil? || !opts[:use_colour].nil?)
         @document = document
         @theme = opts[:theme]
         off = 20
-        @grid = Prawn::Chart::Grid.new(grid_x_start, grid_y_start, grid_width, grid_height, opts[:spacing], document, @theme)
+        @marker_values = opts[:marker_values]
+        marker_points = @marker_values ? @marker_values.collect{|v|calculate_point_fraction_from(v)} : nil
+        @grid = Prawn::Chart::Grid.new(grid_x_start, grid_y_start, grid_width, grid_height, opts[:spacing], marker_points, document, @theme, @downwards)
       end
   
       # Draws the graph on the document which we have a reference to.
@@ -93,15 +100,23 @@ module Prawn
 
         # Put the values up the Y Axis
         #
-        @document.draw_text @highest_value, :at => [base_x - 15, base_y + @grid.height], :size => 5
-        @document.draw_text '0', :at => [base_x - 15, base_y ], :size => 5
-    
+        x_point = base_x - (4 + 4*"#{@highest_value}".length)
+        @document.draw_text @downwards ? @lowest_value : @highest_value, :at => [x_point, base_y + @grid.height - 3], :size => 6
+        @document.draw_text @downwards ? @highest_value : @lowest_value, :at => [x_point, base_y - 1], :size => 6
+        @marker_values.each do |value|
+          next if value == @lowest_value || value == @highest_value
+          @document.draw_text value, :at => [x_point, base_y + calculate_point_height_from(value) - 2], :size => 6
+        end if @marker_values
+
         # Put the column headings along the X Axis
         #
         point_spacing = calculate_plot_spacing 
-        last_position = base_x + (point_spacing / 2)
+        # last_position = base_x + (point_spacing / 2)
+        last_position = base_x
         @headings.each do |heading|
-          @document.draw_text heading, :at => [last_position, base_y - 15 ], :size => 5
+          heading_text = @raw_options[:heading_printer] ? @raw_options[:heading_printer].call(heading) : heading
+          # @document.draw_text heading_text, :at => [last_position, base_y - 15 ], :size => 5
+          @document.text_box heading_text, :at => [last_position+1, base_y - 10 ], :size => 5, :width => point_spacing-2, :align => :center, :overflow => :ellipses
           last_position += point_spacing
         end
         @document.fill_color @theme.background_colour
@@ -195,8 +210,22 @@ module Prawn
       def process_the(data_array)
         col = []
         val = []
-        data_array.each { |i| val << i[1]; col << i[0] }
-        [ col, val ,val.sort.last ]
+        greatest_val = 0
+        data_array = [data_array] unless Array === data_array.first
+        data_array.each do |data_set|
+          set_data = {}
+          set_columns = []
+          data_set.each do |data_point|
+            set_data[data_point[0]] = data_point[1]
+            set_columns << data_point[0]
+            greatest_val = [greatest_val, data_point[1]].max if data_point[1]
+          end
+          val << set_data
+          col << set_columns
+        end
+        col = col[0].zip(*col[1..-1]).flatten.compact.uniq
+        col = col.sort if col.all?{|v|Comparable === v && !(String === v)}
+        [ col, val, greatest_val ]
       end
 
       def calculate_x_axis_center_point(text, text_size, graph_start_x = @grid.start_x, graph_width = @grid.width)
@@ -210,19 +239,33 @@ module Prawn
       alias calculate_y_axis_centre_point calculate_y_axis_center_point
 
       def calculate_plot_spacing
-        (@grid.width / @values.nitems)
+        (@grid.width / @headings.length)
       end
 
       def calculate_bar_width
         calculate_plot_spacing / 2
       end
 
+      def calculate_point_fraction_from(column_value)
+        cv = transform_value BigDecimal("#{column_value}")
+        hv = transform_value BigDecimal("#{@highest_value}")
+        lv = transform_value BigDecimal("#{@lowest_value}")
+        (cv-lv) / (hv-lv)
+      end
+      
       def calculate_point_height_from(column_value)
-        cv = BigDecimal("#{column_value}")
-        hv = BigDecimal("#{@highest_value}")
+        fraction = calculate_point_fraction_from column_value
         gh = BigDecimal("#{@grid.height}")
-        percentage = (cv / (hv / 100))
-        ((gh / 100) * percentage).to_i
+        ph = (gh * fraction).to_i
+        @downwards ? (gh-ph) : ph
+      end
+      
+      def transform_value value
+        if @value_transform
+          @value_transform.call(value) rescue value
+        else
+          value
+        end
       end
 
 

@@ -45,28 +45,43 @@ module Prawn
       
       def plot_values
         base_x = @grid.start_x + 1
-        base_y = @grid.start_y + 1
-        p = [ [base_x, base_y] ]
+        base_y = @grid.start_y + 0
         bar_width = calculate_bar_width
-        @document.line_width bar_width
-        last_position = base_x + bar_width
         point_spacing = calculate_plot_spacing
-        @values.each do |value|
-          @document.move_to [base_x + last_position, base_y]
-          bar_height = calculate_point_height_from value
-          point = [base_x + last_position, base_y + bar_height]
-          p << point
-          @document.fill_color @theme.colours.first
-          @document.fill_circle_at point, :radius => 1
-          last_position += point_spacing
+        @values.reverse_each_with_index do |data_set, setidx|
+          p = [ ]
+          # last_position = base_x + bar_width
+          last_position = base_x + (point_spacing / 2)
+          # last_position = base_x
+          @headings.each do |heading|
+            value = data_set[heading]
+            if value
+              bar_height = calculate_point_height_from value
+              point = [last_position, base_y + bar_height]
+              p << point
+            else
+              p << nil
+            end
+            last_position += point_spacing
+          end
+          @document.line_width 2
+          @document.fill_color 'FFFFFF'
+          @document.stroke_color @theme.colours[setidx % @theme.colours.length]
+          p[0..-2].each_with_index do |point,i|
+            if point
+              @document.move_to point
+              @document.stroke_line_to p[i+1] if p[i+1]
+            end
+          end
+          @document.line_width 1
+          p.each_with_index do |point,i|
+            if point
+              @document.fill_circle_at point, :radius => 2
+              @document.stroke_circle_at point, :radius => 2
+            end
+          end
         end
-        @document.line_width 2
-        @document.stroke_color @theme.colours.first
-        p.each_with_index do |point,i|
-          next if point == p.last
-          @document.move_to point
-          @document.stroke_line_to p[i+1]
-        end
+        
       end
 
     end

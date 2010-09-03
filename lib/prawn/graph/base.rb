@@ -56,6 +56,7 @@ module Prawn
         @highest_value = options[:maximum_value] if options[:maximum_value]
         @value_transform = options[:transform] if Proc === options[:transform]
         @downwards = options[:downward] || options[:downwards] || false
+        @bounding_margin = [(options[:margin] || 10).to_i, 0].max
         (grid_x_start, grid_y_start, grid_width, grid_height) = parse_sizing_from opts 
         @colour = (!opts[:use_color].nil? || !opts[:use_colour].nil?)
         @document = document
@@ -88,8 +89,9 @@ module Prawn
       private
 
       def draw_bounding_box
+        return if @bounding_margin == 0
         @document.fill_color @theme.background_colour
-        @document.fill_and_stroke_rectangle [(@point.first - 10), (@point.last + ( @total_height + 40 ))], @document.bounds.width, (@total_height + 40)
+        @document.fill_and_stroke_rectangle [@point.first, @point.last + @total_height], @document.bounds.width, @total_height
         @document.fill_color '000000'
       end   
  
@@ -115,8 +117,7 @@ module Prawn
         last_position = base_x
         @headings.each do |heading|
           heading_text = @raw_options[:heading_printer] ? @raw_options[:heading_printer].call(heading) : heading
-          # @document.draw_text heading_text, :at => [last_position, base_y - 15 ], :size => 5
-          @document.text_box heading_text, :at => [last_position+1, base_y - 10 ], :size => 5, :width => point_spacing-2, :align => :center, :overflow => :ellipses
+          @document.text_box heading_text, :at => [last_position+1, base_y - 7 ], :size => 5, :width => point_spacing-2, :align => :center, :overflow => :ellipses
           last_position += point_spacing
         end
         @document.fill_color @theme.background_colour
@@ -169,9 +170,6 @@ module Prawn
       
       
       def parse_sizing_from(o)
-        x_offset = 15
-        y_offset = 0
-        move_y_up = 0
         grid_width = o[:width]
         grid_height = o[:height]
       
@@ -179,18 +177,23 @@ module Prawn
         @total_height = o[:height]
         @point = o[:at].dup 
 
+        gridPointX = o[:at][0] + 15 + @bounding_margin
+        gridPointY = o[:at][1] + 7 + @bounding_margin
+        gridWidth = @total_width - (2 * @bounding_margin) - 15
+        gridHeight = @total_height - (2 * @bounding_margin) - 7
+        
         # Make room for the title if we're choosing to Render it.
         #
         if o[:title]
           @title = o[:title]
-          y_offset += 10 
+          gridHeight -= 10
         end
 
         # Make room for X Axis labels if we're using them.
         #
         if o[:label_x]
-          y_offset += 30
-          move_y_up += 30
+          gridPointY += 30
+          gridHeight -= 30
           @x_label = o[:label_x]
         end
 
@@ -198,13 +201,14 @@ module Prawn
         #
         if o[:label_y]
           @y_label = o[:label_y]
-          x_offset += 15
+          gridPointX += 15
+          gridWidth -= 15
         end
 
  
         # Return the values calculated here.
         #
-        [ (o[:at][0] + x_offset), (o[:at][1] + move_y_up + 20), (grid_width - (x_offset - 20)), (grid_height - y_offset) ]
+        [gridPointX, gridPointY, gridWidth, gridHeight]
       end
 
       def process_the(data_array)

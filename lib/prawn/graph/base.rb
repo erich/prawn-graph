@@ -242,8 +242,13 @@ module Prawn
           gridPointX += 15
           gridWidth -= 15
         end
-
- 
+        
+        if @highest_value > 999
+          offset = 4 * ("#{@highest_value}".length - 3)
+          gridPointX += offset
+          gridWidth -= offset
+        end
+        
         # Return the values calculated here.
         #
         [gridPointX, gridPointY, gridWidth, gridHeight]

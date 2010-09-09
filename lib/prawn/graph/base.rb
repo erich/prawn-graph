@@ -288,19 +288,24 @@ module Prawn
       def calculate_x_axis_scale
         @minimumHeading ||= @headings.min
         @maximumHeading ||= @headings.max
-        @xAxisScale ||= (@grid.width - calculate_bar_width) / (@maximumHeading - @minimumHeading)
-        Rails.logger.fatal "@minimumHeading=#{@minimumHeading} @maximumHeading=#{@maximumHeading} @xAxisScale=#{@xAxisScale}"
+        @xAxisScale ||= if @maximumHeading > @minimumHeading
+          (@grid.width - calculate_bar_width) / (@maximumHeading - @minimumHeading)
+        else
+          @grid.width
+        end
       end
       def calculate_x_offset value, index
-        offset = case @xAxisMode
+        case @xAxisMode
           when :time
             calculate_x_axis_scale
-            @grid.start_x + (calculate_bar_width / 2) + (value - @minimumHeading) * @xAxisScale
+            if @xAxisScale == @grid.width
+              @xAxisScale / 2
+            else
+              @grid.start_x + (calculate_bar_width / 2) + (value - @minimumHeading) * @xAxisScale
+            end
           else
             @grid.start_x + index * calculate_plot_spacing + 1
         end
-        Rails.logger.fatal "calculate_x_offset(#{value.inspect}, #{index.inspect}) = #{offset.inspect}"
-        offset
       end
       def calculate_heading_widths
         case @xAxisMode

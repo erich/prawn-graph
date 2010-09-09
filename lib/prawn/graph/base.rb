@@ -143,14 +143,19 @@ module Prawn
 
         # Put the column headings along the X Axis
         #
+        printedHeadings = {}
         point_spacing = calculate_plot_spacing 
-        # last_position = base_x + (point_spacing / 2)
         last_position = base_x
-        @headings.each do |heading|
+        @headings.each_with_index do |heading, idx|
           heading_text = @raw_options[:heading_printer] ? @raw_options[:heading_printer].call(heading) : heading
-          @document.text_box heading_text, :at => [last_position+1, base_y - 7 ], :size => 5, :width => point_spacing-2, :align => :center, :overflow => :ellipses
-          last_position += point_spacing
+          next if printedHeadings[heading_text]
+          headingWidth = @xAxisMode==:time ? calculate_heading_widths : point_spacing-2
+          x_position = @xAxisMode==:time ? calculate_x_offset(heading, idx)-(headingWidth/2) : last_position+1
+          @document.text_box heading_text, :at => [x_position, base_y - 7 ], :size => 5, :width => headingWidth, :align => :center, :overflow => :ellipses
+          printedHeadings[heading_text] = true
         end
+        
+        
         @document.fill_color @theme.background_colour
       end
 
@@ -272,6 +277,33 @@ module Prawn
         ((graph_start_y + (graph_height / 2)) - ((text.length * text_size) / 4))
       end
       alias calculate_y_axis_centre_point calculate_y_axis_center_point
+      
+      def calculate_x_axis_scale
+        @minimumHeading ||= @headings.min
+        @maximumHeading ||= @headings.max
+        @xAxisScale ||= (@grid.width - calculate_bar_width) / (@maximumHeading - @minimumHeading)
+        Rails.logger.fatal "@minimumHeading=#{@minimumHeading} @maximumHeading=#{@maximumHeading} @xAxisScale=#{@xAxisScale}"
+      end
+      def calculate_x_offset value, index
+        offset = case @xAxisMode
+          when :time
+            calculate_x_axis_scale
+            @grid.start_x + (calculate_bar_width / 2) + (value - @minimumHeading) * @xAxisScale
+          else
+            @grid.start_x + index * calculate_plot_spacing + 1
+        end
+        Rails.logger.fatal "calculate_x_offset(#{value.inspect}, #{index.inspect}) = #{offset.inspect}"
+        offset
+      end
+      def calculate_heading_widths
+        case @xAxisMode
+          when :time
+            calculate_x_axis_scale
+            30
+          else
+            calculate_plot_spacing - 2
+        end
+      end
 
       def calculate_plot_spacing
         (@grid.width / @headings.length)

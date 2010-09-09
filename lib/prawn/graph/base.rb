@@ -56,8 +56,10 @@ module Prawn
         @lowest_value = opts[:minimum_value] ? opts[:minimum_value] : 0
         if opts[:maximum_value]
           @highest_value = opts[:maximum_value]
+          @highest_value += 1 if @highest_value == @lowest_value
         else
           maximumValue = @highest_value.to_f
+          maximumValue += 1 if maximumValue == @lowest_value
           delta = maximumValue - @lowest_value
           margin = (opts[:autoscaleMargin] || 0.02) * delta
           @lowest_value -= margin if @lowest_value > 0

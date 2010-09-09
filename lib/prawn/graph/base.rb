@@ -51,17 +51,46 @@ module Prawn
         end
         opts = { :theme => Prawn::Chart::Themes.monochrome, :width => 500, :height => 200, :spacing => 20 }.merge(options)
         @raw_options = opts
+        @xAxisMode = opts[:xaxis] ? opts[:xaxis] : :normal
         (@headings, @values, @highest_value) = process_the data
-        @lowest_value = options[:minimum_value] ? options[:minimum_value] : 0
-        @highest_value = options[:maximum_value] if options[:maximum_value]
-        @value_transform = options[:transform] if Proc === options[:transform]
-        @downwards = options[:downward] || options[:downwards] || false
-        @bounding_margin = [(options[:margin] || 10).to_i, 0].max
+        @lowest_value = opts[:minimum_value] ? opts[:minimum_value] : 0
+        if opts[:maximum_value]
+          @highest_value = opts[:maximum_value]
+        else
+          maximumValue = @highest_value.to_f
+          delta = maximumValue - @lowest_value
+          margin = (opts[:autoscaleMargin] || 0.02) * delta
+          @lowest_value -= margin if @lowest_value > 0
+          maximumValue += margin
+          delta = maximumValue - @lowest_value
+          magnitude = Math.log10(delta).floor - 1
+          normalized = delta / (10**magnitude)
+          normalized = normalized.ceil
+          normalized = normalized * (10**magnitude)
+          normalized = normalized.ceil
+          @highest_value = (@lowest_value + normalized).to_i
+        end
+        
+        if opts[:autoticks]
+          increment = 5
+          delta = @highest_value - @lowest_value
+          [6,5,7,8,4,9,3,2,1].each do |i|
+            if (delta.to_f / i.to_f) == (delta.to_f / i.to_f).floor
+              increment = i
+              break
+            end
+          end
+          opts[:spacing] = opts[:height] / increment,
+          opts[:marker_values] = ((0..increment).collect {|i| i * delta / increment })
+        end
+        
+        @value_transform = opts[:transform] if Proc === opts[:transform]
+        @downwards = opts[:downward] || opts[:downwards] || false
+        @bounding_margin = [(opts[:margin] || 10).to_i, 0].max
         (grid_x_start, grid_y_start, grid_width, grid_height) = parse_sizing_from opts 
         @colour = (!opts[:use_color].nil? || !opts[:use_colour].nil?)
         @document = document
         @theme = opts[:theme]
-        off = 20
         @marker_values = opts[:marker_values]
         marker_points = @marker_values ? @marker_values.collect{|v|calculate_point_fraction_from(v)} : nil
         @grid = Prawn::Chart::Grid.new(grid_x_start, grid_y_start, grid_width, grid_height, opts[:spacing], marker_points, document, @theme, @downwards)
@@ -103,12 +132,14 @@ module Prawn
         # Put the values up the Y Axis
         #
         x_point = base_x - (4 + 4*"#{@highest_value}".length)
-        @document.draw_text @downwards ? @lowest_value : @highest_value, :at => [x_point, base_y + @grid.height - 3], :size => 6
-        @document.draw_text @downwards ? @highest_value : @lowest_value, :at => [x_point, base_y - 1], :size => 6
-        @marker_values.each do |value|
-          next if value == @lowest_value || value == @highest_value
-          @document.draw_text value, :at => [x_point, base_y + calculate_point_height_from(value) - 2], :size => 6
-        end if @marker_values
+        if @marker_values
+          @marker_values.each do |value|
+            @document.draw_text value, :at => [x_point, base_y + calculate_point_height_from(value) - 2], :size => 6
+          end
+        else
+          @document.draw_text @downwards ? @lowest_value : @highest_value, :at => [x_point, base_y + @grid.height - 3], :size => 6
+          @document.draw_text @downwards ? @highest_value : @lowest_value, :at => [x_point, base_y - 1], :size => 6
+        end
 
         # Put the column headings along the X Axis
         #

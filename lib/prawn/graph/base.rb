@@ -43,59 +43,73 @@ module Prawn
       #
       # :theme, the theme to be used to draw this graph, defaults to monochrome.
       #
-      def initialize(data, document, options = {})
-        if options[:at].nil? || options[:at].empty?
+      def initialize(data, document, opts = {})
+        if opts[:at].nil? || opts[:at].empty?
           raise Prawn::Errors::NoGraphStartSet,
             "you must specify options[:at] as the coordinates where you" +
             " wish this graph to be drawn from."
         end
-        opts = { :theme => Prawn::Chart::Themes.monochrome, :width => 500, :height => 200, :spacing => 20 }.merge(options)
-        @raw_options = opts
-        @xAxisMode = opts[:xaxis] ? opts[:xaxis] : :normal
-        (@headings, @values, @highest_value) = process_the data
-        @lowest_value = opts[:minimum_value] ? opts[:minimum_value] : 0
-        if opts[:maximum_value]
-          @highest_value = opts[:maximum_value]
+        @document = document
+        @options = { :theme => Prawn::Chart::Themes.monochrome, :width => 500, :height => 200, :spacing => 20, :direction => :vertical }.merge(opts)
+        @theme = @options[:theme]
+        @direction = @options[:direction]
+        @setAxis = (@direction == :horizontal) ? :yaxis : :xaxis
+        @valueAxis = (@direction == :horizontal) ? :xaxis : :yaxis
+        @setAxisMode = @options[@setAxis][:mode] || :normal
+        (@setAxisHeadings, @values, @highest_value) = process_the data
+        @lowest_value = @options[:minimum_value] ? @options[:minimum_value] : 0
+        if @options[:maximum_value]
+          @highest_value = @options[:maximum_value]
           @highest_value += 1 if @highest_value == @lowest_value
         else
           maximumValue = @highest_value.to_f
           maximumValue += 1 if maximumValue == @lowest_value
           delta = maximumValue - @lowest_value
-          margin = (opts[:autoscaleMargin] || 0.02) * delta
-          @lowest_value -= margin if @lowest_value > 0
+          margin = (@options[:autoscaleMargin] || 0.025) * delta
+          @lowest_value -= margin if @lowest_value != 0
           maximumValue += margin
           delta = maximumValue - @lowest_value
-          magnitude = Math.log10(delta).floor - 1
+          magnitude = Math.log10(delta).floor
           normalized = delta / (10**magnitude)
-          normalized = normalized.ceil
+          normalized = (normalized * 4.0).ceil / 4.0
           normalized = normalized * (10**magnitude)
           normalized = normalized.ceil
           @highest_value = (@lowest_value + normalized).to_i
         end
         
-        if opts[:autoticks]
-          increment = 5
-          delta = @highest_value - @lowest_value
-          [6,5,7,8,4,9,3,2,1].each do |i|
-            if (delta.to_f / i.to_f) == (delta.to_f / i.to_f).floor
-              increment = i
-              break
+        [:xaxis,:yaxis].each do |axis|
+          if @options[axis][:autoticks]
+            increment = 5
+            if delta = (axis == @valueAxis ? (@highest_value - @lowest_value) : (@setAxisHeadings.last - @setAxisHeadings.first rescue nil))
+              [9,6,8,7,5,4,3,2,1].each do |i|
+                if (delta.to_f / i.to_f) == (delta.to_f / i.to_f).floor
+                  increment = i
+                  break
+                end
+              end
+              @options[axis][:spacing] = @options[axis == :xaxis ? :width : :height] / increment,
+              @options[axis][:marker_values] = ((0..increment).collect {|i| i * delta / increment })
             end
           end
-          opts[:spacing] = opts[:height] / increment,
-          opts[:marker_values] = ((0..increment).collect {|i| i * delta / increment })
         end
         
-        @value_transform = opts[:transform] if Proc === opts[:transform]
-        @downwards = opts[:downward] || opts[:downwards] || false
-        @bounding_margin = [(opts[:margin] || 10).to_i, 0].max
-        (grid_x_start, grid_y_start, grid_width, grid_height) = parse_sizing_from opts 
-        @colour = (!opts[:use_color].nil? || !opts[:use_colour].nil?)
-        @document = document
-        @theme = opts[:theme]
-        @marker_values = opts[:marker_values]
-        marker_points = @marker_values ? @marker_values.collect{|v|calculate_point_fraction_from(v)} : nil
-        @grid = Prawn::Chart::Grid.new(grid_x_start, grid_y_start, grid_width, grid_height, opts[:spacing], marker_points, document, @theme, @downwards)
+        @value_transform = @options[:transform] if Proc === @options[:transform]
+        @inverted = @options[@setAxis][:inverted] || @options[:downward] || @options[:downwards] || false
+        @bounding_margin = [(@options[:margin] || 10).to_i, 0].max
+        
+        if @setAxis == :yaxis
+          p=@options[@setAxis][:heading_printer]
+          @options[:left_margin] = [@document.font.compute_width_of(@setAxisHeadings.collect{|h|p ? p.call(h) : h.to_s}.sort{|a,b|a.length<=>b.length}.last, :size => 5), 60].min
+        end
+        (grid_x, grid_y, grid_width, grid_height) = parse_sizing_from @options
+        
+        @valueAxisHeadings = @options[@valueAxis][:marker_values]
+        marker_points = @valueAxisHeadings ? @valueAxisHeadings.collect{|v|calculate_point_fraction_from([*v].first)} : nil
+        
+        @grid = Prawn::Chart::Grid.new(grid_x, grid_y, grid_width, grid_height, document, @theme,
+                                       :spacing => @options[:spacing],
+                                       (@direction == :horizontal ? :x_markers : :y_markers) => marker_points,
+                                       (@direction == :horizontal ? :reverse_x : :reverse_y) => @inverted)
       end
   
       # Draws the graph on the document which we have a reference to.
@@ -131,32 +145,56 @@ module Prawn
         base_x = @grid.start_x + 1
         base_y = @grid.start_y + 1
 
-        # Put the values up the Y Axis
+        # Put the values along the value axis
         #
-        x_point = base_x - (4 + 4*"#{@highest_value}".length)
-        if @marker_values
-          @marker_values.each do |value|
-            @document.draw_text value, :at => [x_point, base_y + calculate_point_height_from(value) - 2], :size => 6
+        if @direction == :horizontal
+          y_point = base_y
+          if @valueAxisHeadings
+            @valueAxisHeadings.each do |value|
+              w = @document.font.compute_width_of(value.to_s, :size => 6)
+              @document.draw_text value, :at => [base_x + calculate_point_width_from(value) - w/2.0, y_point - 7], :size => 6
+            end
+          else
+            w = @document.font.compute_width_of((@inverted ? @lowest_value : @highest_value).to_s, :size => 6)
+            @document.draw_text @inverted ? @lowest_value : @highest_value, :at => [base_x + @grid.height - w, y_point - 7], :size => 6
+            @document.draw_text @inverted ? @highest_value : @lowest_value, :at => [base_x - 1, y_point - 7], :size => 6
           end
         else
-          @document.draw_text @downwards ? @lowest_value : @highest_value, :at => [x_point, base_y + @grid.height - 3], :size => 6
-          @document.draw_text @downwards ? @highest_value : @lowest_value, :at => [x_point, base_y - 1], :size => 6
+          x_point = base_x - (4 + 4*"#{@highest_value}".length)
+          if @valueAxisHeadings
+            @valueAxisHeadings.each do |value|
+              @document.draw_text value, :at => [x_point, base_y + calculate_point_height_from(value) - 2], :size => 6
+            end
+          else
+            @document.draw_text @inverted ? @lowest_value : @highest_value, :at => [x_point, base_y + @grid.height - 3], :size => 6
+            @document.draw_text @inverted ? @highest_value : @lowest_value, :at => [x_point, base_y - 1], :size => 6
+          end
         end
 
-        # Put the column headings along the X Axis
+        # Put the column headings along the set axis
         #
         printedHeadings = {}
-        point_spacing = calculate_plot_spacing 
-        last_position = base_x
-        @headings.each_with_index do |heading, idx|
-          heading_text = @raw_options[:heading_printer] ? @raw_options[:heading_printer].call(heading) : heading
-          next if printedHeadings[heading_text]
-          headingWidth = @xAxisMode==:time ? calculate_heading_widths : point_spacing-2
-          x_position = @xAxisMode==:time ? calculate_x_offset(heading, idx)-(headingWidth/2) : last_position+1
-          @document.text_box heading_text, :at => [x_position, base_y - 7 ], :size => 5, :width => headingWidth, :align => :center, :overflow => :ellipses
-          printedHeadings[heading_text] = true
+        point_spacing = calculate_plot_spacing
+        if @direction == :horizontal
+          last_position = base_y + point_spacing/1.25
+          @setAxisHeadings.each_with_index do |heading, idx|
+            heading_text = @options[@setAxis][:heading_printer] ? @options[@setAxis][:heading_printer].call(heading) : heading.to_s
+            next if printedHeadings[heading_text]
+            y_position = @setAxisMode==:time ? calculate_y_offset(heading, idx) : last_position+(point_spacing * idx)
+            @document.text_box heading_text, :at => [base_x - @options[:left_margin], y_position], :size => 5, :width => @options[:left_margin]-4, :align => :left, :overflow => :ellipses
+            printedHeadings[heading_text] = true
+          end
+        else
+          last_position = base_x
+          @setAxisHeadings.each_with_index do |heading, idx|
+            heading_text = @options[@setAxis][:heading_printer] ? @options[@setAxis][:heading_printer].call(heading) : heading.to_s
+            next if printedHeadings[heading_text]
+            headingWidth = @setAxisMode==:time ? calculate_heading_widths : point_spacing-2
+            x_position = @setAxisMode==:time ? calculate_x_offset(heading, idx)-(headingWidth/2) : last_position+(point_spacing * idx)
+            @document.text_box heading_text, :at => [x_position, base_y - 7 ], :size => 5, :width => headingWidth, :align => :center, :overflow => :ellipses
+            printedHeadings[heading_text] = true
+          end
         end
-        
         
         @document.fill_color @theme.background_colour
       end
@@ -213,11 +251,13 @@ module Prawn
       
         @total_width = o[:width]
         @total_height = o[:height]
-        @point = o[:at].dup 
+        @point = o[:at].dup
+        
+        o[:left_margin] ||= 15
 
-        gridPointX = o[:at][0] + 15 + @bounding_margin
+        gridPointX = o[:at][0] + o[:left_margin] + @bounding_margin
         gridPointY = o[:at][1] + 7 + @bounding_margin
-        gridWidth = @total_width - (2 * @bounding_margin) - 15
+        gridWidth = @total_width - (2 * @bounding_margin) - o[:left_margin]
         gridHeight = @total_height - (2 * @bounding_margin) - 7
         
         # Make room for the title if we're choosing to Render it.
@@ -286,8 +326,8 @@ module Prawn
       alias calculate_y_axis_centre_point calculate_y_axis_center_point
       
       def calculate_x_axis_scale
-        @minimumHeading ||= @headings.min
-        @maximumHeading ||= @headings.max
+        @minimumHeading ||= @setAxisHeadings.min
+        @maximumHeading ||= @setAxisHeadings.max
         @xAxisScale ||= if @maximumHeading > @minimumHeading
           (@grid.width - calculate_bar_width) / (@maximumHeading - @minimumHeading)
         else
@@ -295,7 +335,7 @@ module Prawn
         end
       end
       def calculate_x_offset value, index
-        case @xAxisMode
+        case @setAxisMode
           when :time
             calculate_x_axis_scale
             if @xAxisScale == @grid.width
@@ -307,18 +347,44 @@ module Prawn
             @grid.start_x + index * calculate_plot_spacing + 1
         end
       end
-      def calculate_heading_widths
-        case @xAxisMode
+      def calculate_y_axis_scale
+        @minimumHeading ||= @setAxisHeadings.min
+        @maximumHeading ||= @setAxisHeadings.max
+        @yAxisScale ||= if @maximumHeading > @minimumHeading
+          (@grid.height - calculate_bar_width) / (@maximumHeading - @minimumHeading)
+        else
+          @grid.height
+        end
+      end
+      def calculate_y_offset value, index
+        case @setAxisMode
           when :time
-            calculate_x_axis_scale
-            30
+            calculate_y_axis_scale
+            if @yAxisScale == @grid.height
+              @yAxisScale / 2
+            else
+              @grid.start_y + (calculate_bar_width / 2) + (value - @minimumHeading) * @yAxisScale
+            end
           else
-            calculate_plot_spacing - 2
+            @grid.start_y + index * calculate_plot_spacing + 1
+        end
+      end
+      def calculate_heading_widths
+        case @setAxisMode
+          when :time
+            # calculate_x_axis_scale
+            @setAxis == :xaxis ?
+              30 :
+              @document.font.compute_width_of(@setAxisHeadings.sort{|a,b|a.length<=>b.length}.last, :size => 5)
+          else
+            @setAxis == :xaxis ?
+              (calculate_plot_spacing - 2) :
+              @document.font.compute_width_of(@setAxisHeadings.sort{|a,b|a.length<=>b.length}.last, :size => 5)
         end
       end
 
       def calculate_plot_spacing
-        (@grid.width / @headings.length)
+        @direction == :horizontal ? ((@grid.height / @setAxisHeadings.length)) : (@grid.width / @setAxisHeadings.length)
       end
 
       def calculate_bar_width
@@ -336,7 +402,13 @@ module Prawn
         fraction = calculate_point_fraction_from column_value
         gh = BigDecimal("#{@grid.height}")
         ph = (gh * fraction).to_i
-        @downwards ? (gh-ph) : ph
+        @inverted ? (gh-ph) : ph
+      end
+      def calculate_point_width_from(column_value)
+        fraction = calculate_point_fraction_from column_value
+        gh = BigDecimal("#{@grid.width}")
+        ph = (gh * fraction).to_i
+        @inverted ? (gh-ph) : ph
       end
       
       def transform_value value

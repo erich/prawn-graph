@@ -46,16 +46,33 @@ module Prawn
       def plot_values
         base_x = @grid.start_x + 1
         base_y = @grid.start_y + 1
-        bar_width = calculate_bar_width
+        top_y = @grid.start_y + @grid.height + 10
+        
+        bar_width = calculate_bar_width / @values.length
         @document.line_width bar_width
-        last_position = base_x 
-        point_spacing = calculate_plot_spacing
-        @values.each do |value|
-          @document.move_to [base_x + last_position, base_y]
-          bar_height = calculate_point_height_from value
-          @document.stroke_color @theme.next_colour
-          @document.stroke_line_to [base_x + last_position, base_y + bar_height]
-          last_position += point_spacing
+
+        @values.reverse_each_with_index do |data_set, setidx|
+          
+          @setAxisHeadings.each_with_index do |heading, idx|
+            value = data_set[heading]
+            
+            if value
+              @document.stroke_color @theme.next_colour
+              if @direction == :horizontal
+                y_position = top_y + calculate_y_offset(heading, idx) - (bar_width * setidx)
+                bar_width = calculate_point_width_from value
+                @document.move_to [base_x, y_position]
+                @document.stroke_line_to [base_x + bar_width, y_position]
+              else
+                x_position = base_x + calculate_x_offset(heading, idx) + (bar_width * setidx)
+                bar_height = calculate_point_height_from value
+                @document.move_to [x_position, base_y]
+                @document.stroke_line_to [x_position, base_y + bar_height]
+              end
+            end
+            
+          end
+          
         end
       end
 

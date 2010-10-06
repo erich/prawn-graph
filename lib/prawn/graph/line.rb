@@ -48,7 +48,7 @@ module Prawn
         base_y = @grid.start_y + 0
         @values.reverse_each_with_index do |data_set, setidx|
           p = [ ]
-          @headings.each_with_index do |heading, idx|
+          @setAxisHeadings.each_with_index do |heading, idx|
             value = data_set[heading]
             if value
               x_position = calculate_x_offset heading, idx

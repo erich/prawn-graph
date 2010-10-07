@@ -43,14 +43,22 @@ module Prawn
   
       private
 
-      def plot_values
-        base_x = @grid.start_x + 1
-        base_y = @grid.start_y + 1
-        top_y = @grid.start_y + @grid.height + 10
-        
-        bar_width = calculate_bar_width / @values.length
-        @document.line_width bar_width
+      def calculate_plot_spacing
+        divisor = @options[:ignore_set_spacing] ? @values.collect{|ds|ds.values}.compact.length : @setAxisHeadings.length
+        (@direction == :horizontal ? @grid.height : @grid.width) / divisor
+      end
 
+      def plot_values
+        base_x = @grid.start_x #+ (@inverted ? -1 : 1)
+        far_x = base_x + @grid.width
+        base_y = @grid.start_y #+ (@inverted ? -1 : 1)
+        far_y = base_y + @grid.height
+        
+        bar_width = @options[:ignore_set_spacing] ? calculate_bar_width : calculate_bar_width / @values.length
+        @document.line_width bar_width
+        value_printer = @options[@valueAxis][:value_printer]
+        labelSize = bar_width/2
+        
         @values.reverse_each_with_index do |data_set, setidx|
           
           @setAxisHeadings.each_with_index do |heading, idx|
@@ -59,15 +67,42 @@ module Prawn
             if value
               @document.stroke_color @theme.next_colour
               if @direction == :horizontal
-                y_position = top_y + calculate_y_offset(heading, idx) - (bar_width * setidx)
-                bar_width = calculate_point_width_from value
-                @document.move_to [base_x, y_position]
-                @document.stroke_line_to [base_x + bar_width, y_position]
+                y_position = calculate_y_offset(heading, idx) - (@options[:ignore_set_spacing] ? 0 : bar_width * setidx) + 10
+                bar_length = calculate_point_width_from value
+                @document.move_to [@inverted ? far_x : base_x, y_position]
+                @document.stroke_line_to [base_x + bar_length, y_position]
+                if @options[@valueAxis][:label_values]
+                  value_text = value_printer ? value_printer.call(value) : value.to_s
+                  value_width = @document.font.compute_width_of(value_text, :size => labelSize) + 2
+                  labelPos = [base_x + bar_length + (@inverted ? -(value_width+1) : 1), y_position + bar_width/2]
+                  @document.mask(:fill_color) do
+                    @document.fill_color = 'ffffff'
+                    @document.fill_rectangle labelPos, value_width, bar_width
+                    @document.fill_color = '000000'
+                    @document.text_box value_text, :at => labelPos,
+                                                   :width => value_width, :height => bar_width, :size => labelSize, :margin => 0,
+                                                   :align => (@inverted ? :right : :left), :valign => :center,
+                                                   :overflow => :shrink_to_fit, :min_font_size => 7
+                  end
+                end
               else
-                x_position = base_x + calculate_x_offset(heading, idx) + (bar_width * setidx)
-                bar_height = calculate_point_height_from value
-                @document.move_to [x_position, base_y]
-                @document.stroke_line_to [x_position, base_y + bar_height]
+                x_position = calculate_x_offset(heading, idx) + (@options[:ignore_set_spacing] ? 0 : bar_width * setidx)
+                bar_length = calculate_point_height_from value
+                @document.move_to [x_position, @inverted ? far_y : base_y]
+                @document.stroke_line_to [x_position, base_y + bar_length]
+                if @options[@valueAxis][:label_values]
+                  value_text = value_printer ? value_printer.call(value) : value.to_s
+                  value_width = @document.font.compute_width_of(value_text, :size => labelSize) + 2
+                  labelPos = [x_position - value_width/2, base_x + bar_length + (@inverted ? -1 : (labelSize+1))]
+                  @document.mask(:fill_color) do
+                    @document.fill_color = 'ffffff'
+                    @document.fill_rectangle labelPos, value_width, labelSize
+                    @document.fill_color = '000000'
+                    @document.text_box value.to_s, :at => labelPos,
+                                                   :width => value_width, :height => labelSize, :size => labelSize, :margin => 0,
+                                                   :align => :center, :valign => (@inverted ? :top : :bottom)
+                  end
+                end
               end
             end
             

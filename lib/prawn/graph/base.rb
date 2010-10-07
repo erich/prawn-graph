@@ -50,7 +50,7 @@ module Prawn
             " wish this graph to be drawn from."
         end
         @document = document
-        @options = { :theme => Prawn::Chart::Themes.monochrome, :width => 500, :height => 200, :spacing => 20, :direction => :vertical }.merge(opts)
+        @options = { :theme => Prawn::Chart::Themes.monochrome, :width => 500, :height => 200, :spacing => 20, :direction => :vertical, :label_axes => true, :draw_grid => true }.merge(opts)
         @theme = @options[:theme]
         @direction = @options[:direction]
         @setAxis = (@direction == :horizontal) ? :yaxis : :xaxis
@@ -94,7 +94,7 @@ module Prawn
         end
         
         @value_transform = @options[:transform] if Proc === @options[:transform]
-        @inverted = @options[@setAxis][:inverted] || @options[:downward] || @options[:downwards] || false
+        @inverted = @options[@valueAxis][:inverted] || @options[:downward] || @options[:downwards] || false
         @bounding_margin = [(@options[:margin] || 10).to_i, 0].max
         
         if @setAxis == :yaxis
@@ -116,8 +116,8 @@ module Prawn
       #
       def draw
         draw_bounding_box
-        @grid.draw
-        label_axes
+        @grid.draw if @options[:draw_grid]
+        label_axes if @options[:label_axes]
         if @title
           draw_title
         end
@@ -402,13 +402,15 @@ module Prawn
         fraction = calculate_point_fraction_from column_value
         gh = BigDecimal("#{@grid.height}")
         ph = (gh * fraction).to_i
-        @inverted ? (gh-ph) : ph
+        v=@inverted ? (gh-ph) : ph
+        v
       end
       def calculate_point_width_from(column_value)
         fraction = calculate_point_fraction_from column_value
-        gh = BigDecimal("#{@grid.width}")
-        ph = (gh * fraction).to_i
-        @inverted ? (gh-ph) : ph
+        gw = BigDecimal("#{@grid.width}")
+        pw = (gw * fraction).to_i
+        v=@inverted ? (gw-pw) : pw
+        v
       end
       
       def transform_value value

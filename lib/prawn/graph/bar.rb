@@ -68,7 +68,7 @@ module Prawn
             if value
               @document.stroke_color @theme.next_colour
               if @direction == :horizontal
-                y_position = calculate_y_offset(heading, idx) + (barYOffset * setidx)
+                y_position = calculate_y_offset(heading, idx) + (barYOffset * (setidx + 1))
                 bar_length = calculate_point_width_from value
                 @document.move_to [@inverted ? far_x : base_x, y_position]
                 @document.stroke_line_to [base_x + bar_length, y_position]

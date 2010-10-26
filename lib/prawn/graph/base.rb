@@ -180,8 +180,9 @@ module Prawn
           @setAxisHeadings.each_with_index do |heading, idx|
             heading_text = @options[@setAxis][:heading_printer] ? @options[@setAxis][:heading_printer].call(heading) : heading.to_s
             next if printedHeadings[heading_text]
-            y_position = @setAxisMode==:time ? calculate_y_offset(heading, idx) : last_position+(point_spacing * idx)
-            @document.text_box heading_text, :at => [base_x - @options[:left_margin], y_position], :size => 5, :width => @options[:left_margin]-4, :align => :left, :overflow => :ellipses
+            # y_position = @setAxisMode==:time ? calculate_y_offset(heading, idx) : last_position+(point_spacing * idx)
+            y_position = calculate_y_offset(heading, idx)
+            @document.text_box heading_text, :at => [base_x - @options[:left_margin], y_position + point_spacing], :size => 5, :width => @options[:left_margin]-4, :height => point_spacing, :align => :left, :valign => :center, :overflow => :ellipses
             printedHeadings[heading_text] = true
           end
         else

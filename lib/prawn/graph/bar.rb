@@ -58,7 +58,7 @@ module Prawn
         @document.line_width bar_width
         value_printer = @options[@valueAxis][:value_printer]
         labelSize = bar_width/2
-        barYOffset = (calculate_plot_spacing / 2) / @values.length
+        barYOffset = (calculate_plot_spacing / 2) / (@options[:ignore_set_spacing] ? 1 : @values.length)
         
         @values.reverse_each_with_index do |data_set, setidx|
           
@@ -68,7 +68,7 @@ module Prawn
             if value
               @document.stroke_color @theme.next_colour
               if @direction == :horizontal
-                y_position = calculate_y_offset(heading, idx) + (@options[:ignore_set_spacing] ? 0 : bar_width * setidx) + barYOffset
+                y_position = calculate_y_offset(heading, idx) + (barYOffset * setidx)
                 bar_length = calculate_point_width_from value
                 @document.move_to [@inverted ? far_x : base_x, y_position]
                 @document.stroke_line_to [base_x + bar_length, y_position]

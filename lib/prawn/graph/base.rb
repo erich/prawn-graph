@@ -311,6 +311,7 @@ module Prawn
           val << set_data
           col << set_columns
         end
+        col.sort!{|a,b|b.size<=>a.size}
         col = col[0].zip(*col[1..-1]).flatten.compact.uniq
         col = col.sort if col.all?{|v|Comparable === v && !(String === v)}
         [ col, val, greatest_val ]

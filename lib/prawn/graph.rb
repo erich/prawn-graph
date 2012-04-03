@@ -92,3 +92,12 @@ module Prawn
   end
 
 end
+
+# Helper method
+class Array
+  def reverse_each_with_index
+    idx = length - 1
+    reverse_each { |o| yield(o, idx); idx -= 1 }
+    self
+  end
+end

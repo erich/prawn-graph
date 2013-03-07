@@ -55,7 +55,12 @@ module Prawn
         @direction = @options[:direction]
         @setAxis = (@direction == :horizontal) ? :yaxis : :xaxis
         @valueAxis = (@direction == :horizontal) ? :xaxis : :yaxis
-        @setAxisMode = @options[@setAxis][:mode] || :normal
+        @setAxisMode = 
+          if @options.keys.include? @setAxis 
+            @options[@setAxis][:mode] 
+          else
+            :normal
+          end
         (@setAxisHeadings, @values, @highest_value) = process_the data
         @lowest_value = @options[:minimum_value] ? @options[:minimum_value] : 0
         if @options[:maximum_value]
@@ -78,7 +83,7 @@ module Prawn
         end
         
         [:xaxis,:yaxis].each do |axis|
-          if @options[axis][:autoticks]
+          if @options.keys.include?(axis) and @options[axis][:autoticks]
             increment = 5
             if delta = (axis == @valueAxis ? (@highest_value - @lowest_value) : (@setAxisHeadings.last - @setAxisHeadings.first rescue nil))
               [9,6,8,7,5,4,3,2,1].each do |i|
@@ -94,7 +99,8 @@ module Prawn
         end
         
         @value_transform = @options[:transform] if Proc === @options[:transform]
-        @inverted = @options[@valueAxis][:inverted] || @options[:downward] || @options[:downwards] || false
+        options_value_axis = @options[@valueAxis][:inverted] if @options.keys.include?(@valueAxis)
+        @inverted = options_value_axis || @options[:downward] || @options[:downwards] || false
         @bounding_margin = [(@options[:margin] || 10).to_i, 0].max
         
         if @setAxis == :yaxis
@@ -103,7 +109,7 @@ module Prawn
         end
         (grid_x, grid_y, grid_width, grid_height) = parse_sizing_from @options
         
-        @valueAxisHeadings = @options[@valueAxis][:marker_values]
+        @valueAxisHeadings = @options[@valueAxis][:marker_values] if @options.keys.include?(@valueAxis)
         marker_points = @valueAxisHeadings ? @valueAxisHeadings.collect{|v|calculate_point_fraction_from([*v].first)} : nil
         
         @grid = Prawn::Chart::Grid.new(grid_x, grid_y, grid_width, grid_height, document, @theme,
@@ -188,7 +194,8 @@ module Prawn
         else
           last_position = base_x
           @setAxisHeadings.each_with_index do |heading, idx|
-            heading_text = @options[@setAxis][:heading_printer] ? @options[@setAxis][:heading_printer].call(heading) : heading.to_s
+            options_set_axis =  @options.keys.include?(@setAxis)
+            heading_text = options_set_axis ? @options[@setAxis][:heading_printer].call(heading) : heading.to_s
             next if printedHeadings[heading_text]
             headingWidth = @setAxisMode==:time ? calculate_heading_widths : point_spacing-2
             x_position = @setAxisMode==:time ? calculate_x_offset(heading, idx)-(headingWidth/2) : last_position+(point_spacing * idx)
@@ -306,7 +313,7 @@ module Prawn
           data_set.each do |data_point|
             set_data[data_point[0]] = data_point[1]
             set_columns << data_point[0]
-            greatest_val = [greatest_val, data_point[1]].max if data_point[1]
+            greatest_val = [greatest_val, data_point[1]].max if data_point[1].is_a? Numeric
           end
           val << set_data
           col << set_columns

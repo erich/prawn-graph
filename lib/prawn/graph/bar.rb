@@ -56,7 +56,7 @@ module Prawn
         
         bar_width = @options[:ignore_set_spacing] ? calculate_bar_width : calculate_bar_width / @values.length
         @document.line_width bar_width
-        value_printer = @options[@valueAxis][:value_printer]
+        value_printer = @options[@valueAxis] and @options[@valueAxis][:value_printer]
         labelSize = bar_width/2
         barYOffset = (calculate_plot_spacing / 2) / (@options[:ignore_set_spacing] ? 1 : @values.length)
         
@@ -91,7 +91,7 @@ module Prawn
                 bar_length = calculate_point_height_from value
                 @document.move_to [x_position, @inverted ? far_y : base_y]
                 @document.stroke_line_to [x_position, base_y + bar_length]
-                if @options[@valueAxis][:label_values]
+                if @options[@valueAxis] && @options[@valueAxis][:label_values]
                   value_text = value_printer ? value_printer.call(value) : value.to_s
                   value_width = @document.font.compute_width_of(value_text, :size => labelSize) + 2
                   labelPos = [x_position - value_width/2, base_x + bar_length + (@inverted ? -1 : (labelSize+1))]

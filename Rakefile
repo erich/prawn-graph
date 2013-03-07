@@ -1,7 +1,7 @@
 require 'rubygems'
 require 'rake'
-require "rake/gempackagetask" 
-require "rake/rdoctask"
+require "rubygems/package_task" 
+require "rdoc/task"
 
 PRAWN_GRAPH_VERSION = '0.0.4'
 
@@ -41,7 +41,7 @@ Rake::RDocTask.new do |rdoc|
 end     
 
  
-Rake::GemPackageTask.new(spec) do |pkg|
+Gem::PackageTask.new(spec) do |pkg|
   pkg.need_zip = true
   pkg.need_tar = true
 end
